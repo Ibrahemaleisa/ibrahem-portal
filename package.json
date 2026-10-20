@@ -7,11 +7,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "npx serve out",
-    "preview": "next build && wrangler pages dev out",
+    "preview": "next build && wrangler dev --port 8788",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "check:content": "tsx scripts/check-content.ts",
-    "deploy": "next build && wrangler pages deploy out"
+    "deploy": "next build && wrangler deploy"
   },
   "dependencies": {
     "next": "^16.4.2",

@@ -3,14 +3,14 @@
 Personal freelance portfolio: home, work index with filtering, a reusable case-study template, services, about and a working project-inquiry form.
 
 - **Stack:** Next.js 16 (App Router, static export) · React 19 · TypeScript · Tailwind CSS 4
-- **Hosting:** Cloudflare Pages (static files + one Pages Function for the contact form)
+- **Hosting:** Cloudflare Workers with Static Assets: the static site in `out/` plus one small Worker for the contact form
 - **Runtime dependencies:** `next`, `react`, `react-dom`. Nothing else ships to the browser.
 
 ```bash
 npm install
 npm run dev            # http://localhost:3000 (the contact form shows "not connected" here — expected)
 npm run build          # static site in ./out
-npm run preview        # build + run ./out with the contact function via wrangler (http://localhost:8788)
+npm run preview        # build + run the site and contact Worker locally via wrangler dev (http://localhost:8788)
 npm run check:content  # validate content + print everything still marked "to confirm"
 npm run lint && npm run typecheck
 ```
@@ -68,7 +68,7 @@ Before launch, replace the pending values you can, then set `NEXT_PUBLIC_SHOW_DR
 
 ## Contact form
 
-The form posts JSON to `/api/contact`. That endpoint is handled by `functions/api/contact.ts`, a Cloudflare Pages Function that:
+The form posts JSON to `/api/contact`. That endpoint is handled by the Cloudflare Worker (`worker/index.ts` routes it to `worker/contact.ts`), which:
 
 - validates the input, checks the request is same-origin, and catches bots with a honeypot field;
 - optionally verifies Cloudflare Turnstile;
@@ -79,7 +79,7 @@ It returns `{ ok: true }` **only after Resend accepts the email**. When it isn't
 ### Set up email delivery
 
 1. Create a Resend account, add and verify your domain, and create an API key.
-2. In **Cloudflare Pages → your project → Settings → Variables and Secrets** (Production, and Preview if you want it), add:
+2. In **Cloudflare dashboard → Workers & Pages → `ibrahem-portal` → Settings → Variables and Secrets**, add the following (or run `npx wrangler secret put <NAME>`):
 
 | Name | Type | Example |
 |---|---|---|
@@ -98,40 +98,46 @@ It returns `{ ok: true }` **only after Resend accepts the email**. When it isn't
 
 ---
 
-## Deploying to Cloudflare Pages
+## Deploying to Cloudflare (Workers + Static Assets)
 
-The site uses Next.js **static export** (`output: "export"`). Static export works with Cloudflare Pages without any adapter, because every page is pre-rendered at build time.
+The site uses Next.js **static export** (`output: "export"`): every page is pre-rendered into `out/`. `wrangler.toml` deploys it as a Cloudflare **Worker with Static Assets**:
 
-Features that need a Node server are deliberately not used: next/image optimisation, middleware, ISR and route handlers. Images ship pre-sized, with `images.unoptimized`. If you later need server features, switch to `@opennextjs/cloudflare` (Workers).
+- **`[assets] directory = "./out"`:** Cloudflare serves the pages, images and `_headers` straight from its edge.
+  - `html_handling = "auto-trailing-slash"` makes `/about` serve `about.html`.
+  - `not_found_handling = "404-page"` serves `404.html` for unknown paths.
+- **`main = "worker/index.ts"`:** the Worker runs only for `/api/*` (`run_worker_first`), which is where the contact form posts.
+- **`keep_vars = true`:** deploys don't wipe variables you set in the dashboard.
 
-### Option A: Git integration (recommended)
+Features that need a Node server are deliberately not used: next/image optimisation, middleware, ISR and route handlers. Images ship pre-sized, with `images.unoptimized`. If you later need server features, switch to `@opennextjs/cloudflare`.
 
-1. Push this repo to GitHub.
-2. Go to Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git** and pick the repo.
-3. Build settings:
-   - Framework preset: *None*
+> The project must be a **Worker**, not a Pages project. `wrangler deploy` needs `main` and `[assets]` in `wrangler.toml`, which this repo now provides. The Worker name in the dashboard must match `name = "ibrahem-portal"` in `wrangler.toml`; if yours differs, change one of them.
+
+### Option A: Workers Builds (Git integration)
+
+1. Cloudflare dashboard → **Workers & Pages → `ibrahem-portal` → Settings → Build**. Connect `Ibrahemaleisa/ibrahem-portal` if it isn't connected yet.
+2. Build settings:
    - Build command: `npm run build`
-   - Build output directory: `out`
-   - Environment variable: `NODE_VERSION` = `22`
-4. Add build variables:
-   - `NEXT_PUBLIC_SITE_URL` = `https://yourdomain.com` (used for canonical URLs, the sitemap and Open Graph)
+   - Deploy command: `npx wrangler deploy`
+   - Root directory: `/`
+   - Production branch: the branch you deploy (currently `claude/portfolio-website-build-mic1yj`; set it to `main` once that branch is merged)
+3. Build variables (Settings → Build → Variables and secrets). These are read at **build** time:
+   - `NEXT_PUBLIC_SITE_URL` = `https://yourdomain.com` (canonical URLs, sitemap and Open Graph)
    - `NEXT_PUBLIC_SHOW_DRAFT_NOTES` = `false` (when you're ready)
-5. Add the contact secrets from the table above.
-6. Deploy. The `functions/` folder is picked up automatically, and every push to the main branch redeploys.
+   - optional `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+4. Runtime variables (Settings → Variables and Secrets): the contact settings from the table above.
+5. Push. Every push to the production branch builds and deploys; other branches get preview versions if enabled.
 
 ### Option B: CLI
 
 ```bash
 npx wrangler login
-npm run deploy        # next build && wrangler pages deploy out
+npm run deploy        # next build && wrangler deploy
 ```
-
-`wrangler.toml` holds the project name and output directory.
 
 ### Custom domain, DNS and HTTPS
 
-1. **Pages project → Custom domains → Set up a domain.** Enter `yourdomain.com`, and optionally `www.yourdomain.com`.
-2. If the domain's DNS is on Cloudflare, the records are created for you. Otherwise add a `CNAME` from `www` (or the apex, if your DNS provider supports CNAME flattening or ALIAS) to `<project>.pages.dev`.
+1. The domain must use Cloudflare DNS (add it as a zone and change its nameservers at the registrar).
+2. **Worker → Settings → Domains & Routes → Add → Custom domain.** Enter `yourdomain.com`, and optionally `www.yourdomain.com`. Cloudflare creates the DNS records for you. Until then the site is live at `ibrahem-portal.<your-subdomain>.workers.dev`.
 3. Cloudflare issues and renews the HTTPS certificate automatically. Then enable **Always Use HTTPS** under SSL/TLS → Edge Certificates.
 4. Redirect `www` → apex (or the reverse) with a Bulk Redirect or Redirect Rule.
 5. Set `NEXT_PUBLIC_SITE_URL` to the final domain and redeploy.
@@ -145,10 +151,10 @@ Each project has its own case study at `/work/<slug>`. Live apps and demos are a
 | Kind of project | Suggested home | How |
 |---|---|---|
 | Vercel apps (Operra, Operra Events OS) | `operra.yourdomain.com`, `events.yourdomain.com` | Vercel project → Domains → add the subdomain, then add the `CNAME` it shows in your DNS (`cname.vercel-dns.com`). |
-| Static prototypes (e.g. Sukan's waitlist page) | `sukan.yourdomain.com` or a separate Pages project | Create a second Cloudflare Pages project from that repo or folder, then add it as a custom domain. Free tier. |
+| Static prototypes (e.g. Sukan's waitlist page) | `sukan.yourdomain.com` | Deploy it as its own Worker with static assets (or a Pages project), then add the subdomain as a custom domain. Free tier. |
 | Salla themes | Salla demo store URL | Link the demo store. |
 
-None of this needs paid infrastructure: Cloudflare Pages (free), Vercel Hobby and Resend's free tier cover it. Do not buy domains or point DNS until you've decided on names.
+None of this needs paid infrastructure: Cloudflare Workers free plan (static asset requests are free), Vercel Hobby and Resend's free tier cover it. Do not buy domains or point DNS until you've decided on names.
 
 ---
 
@@ -161,7 +167,9 @@ src/
   components/          presentation only (cover, card, status badge, form, header/footer…)
   content/             all copy and project data
   lib/                 types, draft helpers, OG card renderer
-functions/api/contact.ts   Cloudflare Pages Function (contact delivery)
+worker/index.ts            Worker entry: /api/* routing, everything else → static assets
+worker/contact.ts          contact delivery (validation, Turnstile, Resend)
+wrangler.toml              Worker + static assets config
 public/work/<slug>/        project images
 public/_headers            security + caching headers
 scripts/check-content.ts   content validation + launch checklist

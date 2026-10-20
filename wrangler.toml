@@ -1,11 +1,24 @@
-# Cloudflare Pages project config (used by `wrangler pages dev|deploy`).
-name = "ibrahim-portfolio"
-pages_build_output_dir = "out"
+# Cloudflare Workers config (used by `wrangler deploy` and Workers Builds).
+# The static site in ./out is served as Workers Static Assets; worker/index.ts
+# only handles /api/*.
+name = "ibrahem-portal"
+main = "worker/index.ts"
 compatibility_date = "2026-10-01"
 
-# Non-secret settings for the contact function. Secrets (RESEND_API_KEY,
-# TURNSTILE_SECRET_KEY) are set in the Cloudflare dashboard or with
-# `wrangler pages secret put`, and locally in .dev.vars.
-[vars]
-CONTACT_TO_EMAIL = ""
-CONTACT_FROM_EMAIL = ""
+# Keep variables set in the Cloudflare dashboard when deploying from CI.
+keep_vars = true
+
+[assets]
+directory = "./out"
+binding = "ASSETS"
+not_found_handling = "404-page"
+html_handling = "auto-trailing-slash"
+run_worker_first = ["/api/*"]
+
+[observability]
+enabled = true
+
+# Contact settings are NOT stored here. Set them in the dashboard
+# (Worker → Settings → Variables and Secrets) or with `wrangler secret put`:
+#   RESEND_API_KEY, CONTACT_TO_EMAIL, CONTACT_FROM_EMAIL, TURNSTILE_SECRET_KEY (optional)
+# Locally, put them in .dev.vars (see .dev.vars.example).

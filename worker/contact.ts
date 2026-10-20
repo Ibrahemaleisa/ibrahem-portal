@@ -1,19 +1,19 @@
 /**
- * Cloudflare Pages Function: POST /api/contact
+ * POST /api/contact — called from worker/index.ts
  *
  * Validates a project inquiry and delivers it by email through Resend.
  * It only answers { ok: true } after Resend has accepted the message, and
  * answers 503 when the required settings are missing — so the site can never
  * show a false "sent" message.
  *
- * Settings (Cloudflare Pages → Settings → Variables and Secrets):
+ * Settings (Cloudflare → Workers & Pages → this Worker → Settings → Variables and Secrets):
  *   RESEND_API_KEY        secret   Resend API key
  *   CONTACT_TO_EMAIL      plain    where inquiries are delivered
  *   CONTACT_FROM_EMAIL    plain    verified sender, e.g. "Portfolio <hello@yourdomain.com>"
  *   TURNSTILE_SECRET_KEY  secret   optional; when set, a Turnstile token is required
  */
 
-interface Env {
+export interface ContactEnv {
   RESEND_API_KEY?: string;
   CONTACT_TO_EMAIL?: string;
   CONTACT_FROM_EMAIL?: string;
@@ -52,7 +52,7 @@ async function verifyTurnstile(secret: string, token: string, ip: string | null)
   return data.success === true;
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export async function handleContact(request: Request, env: ContactEnv): Promise<Response> {
   // Same-origin only.
   const origin = request.headers.get("origin");
   if (origin && new URL(origin).host !== new URL(request.url).host) {
@@ -129,4 +129,4 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return json(502, { ok: false, error: "The message could not be delivered. Please try again later." });
   }
   return json(200, { ok: true });
-};
+}
