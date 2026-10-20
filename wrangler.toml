@@ -1,0 +1,11 @@
+# Cloudflare Pages project config (used by `wrangler pages dev|deploy`).
+name = "ibrahim-portfolio"
+pages_build_output_dir = "out"
+compatibility_date = "2026-10-01"
+
+# Non-secret settings for the contact function. Secrets (RESEND_API_KEY,
+# TURNSTILE_SECRET_KEY) are set in the Cloudflare dashboard or with
+# `wrangler pages secret put`, and locally in .dev.vars.
+[vars]
+CONTACT_TO_EMAIL = ""
+CONTACT_FROM_EMAIL = ""
